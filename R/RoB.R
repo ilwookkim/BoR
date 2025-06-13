@@ -1,5 +1,4 @@
 library(shiny)
-library(jsonlite)
 library(dplyr)
 library(DT)
 options(scipen = 999)
@@ -7,17 +6,17 @@ options(scipen = 999)
 ##############
 # Assumption #
 ##############
-# Every 5 years tax brackets and personal allowance are updated resulting in +40 Euro net salary increasing.
+# Every 5 years tax brackets and personal allowance are updated resulting in +80 Euro net salary increasing.
 # Annual indexation is fixed as 3.0% (rent etc)
 # Annual wage_indexation is set bit high than inflation due to promotion etc. fixed 3.2%
-# sp500 last 10 year growing was around 287%
-# house price last 10 year growing was around 35% in Belgium
+# sp500 last 10 year growing was around 203%
+# house price last 10 year growing was around 48.57% in Belgium
 # initial rent is 1200 and following index
-# initial monthly gross is 5823 and following index
+# initial monthly gross is following index
 # house hold price is currently 2000 amd following index
 # Child benefit is currently 188.89 and follwing index
 # interest rate for mortagate is 1.5-3.5%
-# loan to vlaue ratio is 85%.
+# loan to vlaue ratio is 75 - 85%.
 # Property Taxes in Germany is 0.26% - 1%
 # Property Taxes in Belgium is Approximately 1.25% of the indexed (2024:2.1763) cadastral value in Wallonia (2.5% Flanders, 2.25% Brussels)
 # cadastral value is typically 20-30% of market value: fixed 20%
@@ -25,7 +24,7 @@ options(scipen = 999)
 # Maintenance and Repairs is typically 1% - 2% of the property value: fixed 1%
 # Annual Home Insurance 300 - 600 Euro: initial 300 and following indexation
 
-profit_cal <- function(house_price , n_periods_years, mortagate_rate, salary, idx, wage_idx, percentage_increase_sp500_10y, percentage_increase_house_10y, rental_cost, kinder_geld,  m_living_cost, ltv, age_kids){
+profit_cal <- function(house_price = 350000, n_periods_years = 1, mortagate_rate = 0.015, salary = 5940, idx = 1.03, wage_idx = 1.032, percentage_increase_sp500_10y = 287, percentage_increase_house_10y = 35, rental_cost = 1200, kinder_geld = 188.89,  m_living_cost = 2000, ltv = 0.8, age_kids = "11, 9"){
   
   
   age_kids <- as.numeric(unlist(strsplit(age_kids, ",")))
@@ -131,7 +130,7 @@ profit_cal <- function(house_price , n_periods_years, mortagate_rate, salary, id
     
     investing_sp500_rent <- (investing_sp500_rent+savable)
     investing_sp500_rent <- investing_sp500_rent * (1+sp500_CMGR)
-    rent_df$Month[i] <- i
+    rent_df$Month[i] <- round(i, 2)
     rent_df$Gross[i] <- round(init_gross, 2)
     rent_df$Net[i] <- round(init_net, 2)
     rent_df$Kindergeld[i] <- round(result[i], 2)
@@ -143,14 +142,14 @@ profit_cal <- function(house_price , n_periods_years, mortagate_rate, salary, id
   # When buy, rest to sp500
   
   loans <- house_price*ltv/100
-  res <- level_debt_cal(loan_amount = loans, annual_rate = mortagate_rate, n_years = n_periods_years)
+  level_debt <- level_debt_cal(loan_amount = loans, annual_rate = mortagate_rate, n_years = n_periods_years)
   
   # income
   init_gross <- salary
   
   # spend
-  init_rent <- res$Monthly_payment
-  property_tax <- (house_price * 0.20 * 2.1763 * 0.0125)/12
+  level_debt <- level_debt$Monthly_payment
+  
   lv_cost2 <- m_living_cost
   init_house_hold <- lv_cost2
   home_insureance <- 300/12 
@@ -166,9 +165,8 @@ profit_cal <- function(house_price , n_periods_years, mortagate_rate, salary, id
       if(i %% 12*5 == 0){
         init_gross <- init_gross + 80
       }
-      init_rent <- init_rent
       init_house_hold <- init_house_hold * indexation
-      
+      home_insureance <- home_insureance * indexation
     }
     
     # if(i %% 12 == 0){
@@ -184,19 +182,19 @@ profit_cal <- function(house_price , n_periods_years, mortagate_rate, salary, id
     # }
     init_net <- gross2net(init_gross = init_gross)
     house_price <- house_price* (1+house_CMGR)
-    repair_cost <- house_price * 0.01 / 12
-    
+    repair_cost <- house_price * 0.005 / 12
+    property_tax <- (house_price * 0.20 * 2.1763 * 0.0125)/12
     
     savable <- init_net + result[i] - init_rent - init_house_hold - repair_cost - property_tax - home_insureance
     
     investing_sp500_buy <- (investing_sp500_buy+savable)
     investing_sp500_buy <- investing_sp500_buy * (1+sp500_CMGR)
     
-    buy_df$Month[i] <- i
+    buy_df$Month[i] <- round(i, 2)
     buy_df$Gross[i] <- round(init_gross, 2)
     buy_df$Net[i] <- round(init_net, 2)
     buy_df$Kindergeld[i] <- round(result[i], 2)
-    buy_df$Mortagate[i] <- round(init_rent, 2)
+    buy_df$Mortagate[i] <- round(level_debt, 2)
     buy_df$living_cost[i] <- round(init_house_hold, 2)
     buy_df$Property_tax[i] <- round(property_tax, 2)
     buy_df$Home_insureance[i] <- round(home_insureance, 2)
@@ -226,7 +224,7 @@ ui <- fluidPage(
       numericInput(
         inputId = "house_price",
         label = "Enter Real estate Price:",
-        value = 200000.00,
+        value = 300000.00,
         step = 0.01
       ),
       numericInput(
@@ -238,13 +236,13 @@ ui <- fluidPage(
       numericInput(
         inputId = "mortagate_rate",
         label = "Enter Mortagate Rate (example 0.02 : 2%)",
-        value = 0.020,
+        value = 0.040,
         step = 0.001
       ),
       numericInput(
         inputId = "salary",
         label = "Enter Monthly Gross Income (Belgium Tax system)",
-        value = 5000.00,
+        value = 6000.00,
         step = 0.01
       ),
       numericInput(
@@ -261,15 +259,15 @@ ui <- fluidPage(
       ),
       numericInput(
         inputId = "percentage_increase_sp500_10y",
-        label = "Enter Last 10 years Interesting market Growth (default(SP500) 287%)",
-        value = 287.0,
+        label = "Enter Last 10 years Interesting market Growth (default(SP500) 215%)",
+        value = 215.0,
         step = 0.1
       ),
       numericInput(
         inputId = "percentage_increase_house_10y",
-        label = "Enter Last 10 years Real Estate Price Growth (default(Belgium) 38%)",
-        value = 38.0,
-        step = 0.1
+        label = "Enter Last 10 years Real Estate Price Growth (default(Belgium) 48.57%)",
+        value = 48.57,
+        step = 0.01
       ),
       numericInput(
         inputId = "rental_cost",
@@ -291,8 +289,8 @@ ui <- fluidPage(
       ),
       numericInput(
         inputId = "ltv",
-        label = "Enter Loan-to-Value (default 80%)",
-        value = 80.00,
+        label = "Enter Loan-to-Value (default 85%)",
+        value = 85.00,
         step = 0.01
       ),
       textInput("age_kids",
